@@ -16,6 +16,7 @@ LAND = "."
 HORSE = "H"
 WALL = "W"
 CHERRY = "C"
+GOLDEN_CHERRY = "G"
 BEES = "S"
 
 
@@ -75,7 +76,7 @@ def solve_enclose_horse() -> list[list[str]] | None:
     - R[r,c] <-> D[r,c] >= 0
     - W[r,c] -> D[r,c] = -1
     - cell == WATER -> not W[r,c] and not R[r,c] and D[r,c] = -1
-    - cell in {CHERRY, PORTAL, BEES} -> not W[r,c]
+    - cell in {CHERRY, GOLDEN_CHERRY, PORTAL, BEES} -> not W[r,c]
     - cell == HORSE -> D[r,c] = 0 and not W[r,c]
     - cell != HORSE -> D[r,c] != 0
     - boundary LAND and R[r,c] -> W[r,c]
@@ -118,7 +119,12 @@ def solve_enclose_horse() -> list[list[str]] | None:
                 model.add(reachable[i][j] == 0)
                 continue
 
-            if cell == CHERRY or cell.isdigit() or cell == BEES:
+            if (
+                cell == CHERRY
+                or cell == GOLDEN_CHERRY
+                or cell == BEES
+                or cell.isdigit()
+            ):
                 model.add(wall[i][j] == 0)
 
             if cell == HORSE:
@@ -159,23 +165,21 @@ def solve_enclose_horse() -> list[list[str]] | None:
 
     model.add(sum(wall[r][c] for r in range(ROWS) for c in range(COLS)) <= MAX_WALLS)
 
-    land_sum = sum(reachable[r][c] for r in range(ROWS) for c in range(COLS))
+    score = 0
 
-    cherry_sum = sum(
-        reachable[r][c] * 3
-        for r in range(ROWS)
-        for c in range(COLS)
-        if GRID[r][c] == CHERRY
-    )
+    for r in range(ROWS):
+        for c in range(COLS):
+            cell: str = GRID[r][c]
+            score += reachable[r][c]
 
-    bees_sum = sum(
-        reachable[r][c] * -5
-        for r in range(ROWS)
-        for c in range(COLS)
-        if GRID[r][c] == BEES
-    )
+            if cell == CHERRY:
+                score += reachable[r][c] * 3
+            elif cell == GOLDEN_CHERRY:
+                score += reachable[r][c] * 10
+            elif cell == BEES:
+                score += reachable[r][c] * -5
 
-    model.maximize(land_sum + cherry_sum + bees_sum)
+    model.maximize(score)
 
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
@@ -197,12 +201,14 @@ def solve_enclose_horse() -> list[list[str]] | None:
 
 
 def render_grid(grid: list[list[str]]) -> str:
-    palette = {
+    # every cell to one emoji
+    emojis = {
         WATER: "🟦",
         LAND: "🟩",
         HORSE: "🐴",
         WALL: "🟥",
         CHERRY: "🍒",
+        GOLDEN_CHERRY: "💰",
         BEES: "🐝",
     }
     lines = []
@@ -212,7 +218,7 @@ def render_grid(grid: list[list[str]]) -> str:
             if cell.isdigit():
                 cells.append(f"{cell}️⃣")
                 continue
-            cells.append(palette.get(cell, cell))
+            cells.append(emojis.get(cell, cell))
         lines.append("".join(cells))
     return "\n".join(lines)
 

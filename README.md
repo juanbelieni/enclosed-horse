@@ -6,7 +6,6 @@ The `main.py` performs the following:
 - Fetches the puzzle from `https://enclose.horse/play/<date>`.
 - Uses Google OR-Tools CP-SAT to optimize wall placement.
 
-
 Usage:
 
 ```bash
