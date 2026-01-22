@@ -11,19 +11,27 @@ GRID = []
 ROWS = 0
 COLS = 0
 
-WATER = "~"
-LAND = "."
-HORSE = "H"
-WALL = "W"
-CHERRY = "C"
-GOLDEN_CHERRY = "G"
-BEES = "S"
+
+HORSE = r"H"
+LAND = r"\."
+WATER = r"~"
+WALL = r"W"
+PORTAL = r"[0-9a-z]"
+CHERRY = r"C"
+GOLDEN_CHERRY = r"G"
+BEES = r"S"
 
 
-def fetch_puzzle(day: str) -> tuple[str, int]:
-    url = f"https://enclose.horse/play/{day}"
+def is_(cell_type: str, cell: str) -> bool:
+    return re.fullmatch(cell_type, cell) is not None
+
+
+def fetch_puzzle(level_code: str) -> tuple[str, int]:
+    url = f"https://enclose.horse/play/{level_code}"
     html = urllib.request.urlopen(url).read().decode("utf-8")
-    map_str = re.search(r"<!-- ASCII MAP:\n(.*?)-->", html, re.S).group(1).strip()
+    map_str = (
+        re.search(r'"map":"(.*?)"', html, re.S).group(1).strip().replace("\\n", "\n")
+    )
     max_walls = int(re.search(r'"budget":(\d+)', html).group(1))
     return map_str, max_walls
 
@@ -32,7 +40,7 @@ def get_portal_exit(pos):
     i, j = pos
     cell: str = GRID[i][j]
 
-    assert cell.isdigit(), "Cell is not a portal"
+    assert is_(PORTAL, cell), "Cell is not a portal"
 
     for r in range(ROWS):
         for c in range(COLS):
@@ -59,7 +67,7 @@ def get_neighbors(pos) -> list[tuple[int, int]]:
     for ni, nj in positions.copy():
         cell: str = GRID[ni][nj]
 
-        if cell.isdigit():
+        if is_(PORTAL, cell):
             portal_pos = get_portal_exit((ni, nj))
 
             if portal_pos:
@@ -75,9 +83,9 @@ def solve_enclose_horse() -> list[list[str]] | None:
     For all cells:
     - R[r,c] <-> D[r,c] >= 0
     - W[r,c] -> D[r,c] = -1
-    - cell == WATER -> not W[r,c] and not R[r,c] and D[r,c] = -1
-    - cell in {CHERRY, GOLDEN_CHERRY, PORTAL, BEES} -> not W[r,c]
-    - cell == HORSE -> D[r,c] = 0 and not W[r,c]
+    - cell is WATER -> not W[r,c] and not R[r,c] and D[r,c] = -1
+    - cell in {CHERRY, GOLDEN_CHERRY, BEES, PORTAL} -> not W[r,c]
+    - cell is HORSE -> D[r,c] = 0 and not W[r,c]
     - cell != HORSE -> D[r,c] != 0
     - boundary LAND and R[r,c] -> W[r,c]
     - boundary PORTAL -> R[r,c] = 0 and R[portal_exit(r,c)] = 0
@@ -85,7 +93,7 @@ def solve_enclose_horse() -> list[list[str]] | None:
     - D[r,c] >= 1 -> exists neighbor n with R[n] and D[r,c] = D[n] + 1
     - no neighbors -> D[r,c] <= 0
     Objective: maximize sum(R) + 3 * sum(R on CHERRY), with sum(W) <= max_walls.
-    Portals: any digit neighbors connect to all matching digits.
+    Portals: any digit or lowercase letter neighbors connect to all matching cells.
     """
     max_dist = sum(1 for r in range(ROWS) for c in range(COLS) if GRID[r][c] != WATER)
 
@@ -113,30 +121,31 @@ def solve_enclose_horse() -> list[list[str]] | None:
             model.add(distance[i][j] <= -1).only_enforce_if(reachable[i][j].Not())
             model.add(distance[i][j] == -1).only_enforce_if(wall[i][j])
 
-            if cell == WATER:
+            if is_(WATER, cell):
                 model.add(wall[i][j] == 0)
                 model.add(distance[i][j] == -1)
                 model.add(reachable[i][j] == 0)
                 continue
 
             if (
-                cell == CHERRY
-                or cell == GOLDEN_CHERRY
-                or cell == BEES
-                or cell.isdigit()
+                is_(CHERRY, cell)
+                or is_(GOLDEN_CHERRY, cell)
+                or is_(BEES, cell)
+                or is_(PORTAL, cell)
             ):
                 model.add(wall[i][j] == 0)
 
-            if cell == HORSE:
+            if is_(HORSE, cell):
+                model.add(reachable[i][j] == 1)
                 model.add(distance[i][j] == 0)
                 model.add(wall[i][j] == 0)
             else:
                 model.add(distance[i][j] != 0)
 
-            if is_boundary and cell == LAND:
+            if is_boundary and is_(LAND, cell):
                 model.add(wall[i][j] == 1).only_enforce_if(reachable[i][j])
 
-            if is_boundary and cell.isdigit():
+            if is_boundary and is_(PORTAL, cell):
                 en, ej = get_portal_exit((i, j))
 
                 model.add(reachable[i][j] == 0)
@@ -172,11 +181,11 @@ def solve_enclose_horse() -> list[list[str]] | None:
             cell: str = GRID[r][c]
             score += reachable[r][c]
 
-            if cell == CHERRY:
+            if is_(CHERRY, cell):
                 score += reachable[r][c] * 3
-            elif cell == GOLDEN_CHERRY:
+            elif is_(GOLDEN_CHERRY, cell):
                 score += reachable[r][c] * 10
-            elif cell == BEES:
+            elif is_(BEES, cell):
                 score += reachable[r][c] * -5
 
     model.maximize(score)
@@ -201,12 +210,12 @@ def solve_enclose_horse() -> list[list[str]] | None:
 
 
 def render_grid(grid: list[list[str]]) -> str:
-    # every cell to one emoji
     emojis = {
-        WATER: "🟦",
-        LAND: "🟩",
         HORSE: "🐴",
+        LAND: "🟩",
+        WATER: "🟦",
         WALL: "🟥",
+        PORTAL: "🌀",
         CHERRY: "🍒",
         GOLDEN_CHERRY: "💰",
         BEES: "🐝",
@@ -215,10 +224,11 @@ def render_grid(grid: list[list[str]]) -> str:
     for row in grid:
         cells = []
         for cell in row:
-            if cell.isdigit():
-                cells.append(f"{cell}️⃣")
-                continue
-            cells.append(emojis.get(cell, cell))
+            for cell_type, emoji in emojis.items():
+                if is_(cell_type, cell):
+                    cells.append(emoji)
+                    break
+
         lines.append("".join(cells))
     return "\n".join(lines)
 
@@ -237,8 +247,8 @@ def render_reachable(grid: list[list[str]], reachable: list[list[bool]]) -> str:
 
 
 if __name__ == "__main__":
-    day = sys.argv[1] if len(sys.argv) > 1 else datetime.date.today().isoformat()
-    MAP, MAX_WALLS = fetch_puzzle(day)
+    level_code = sys.argv[1] if len(sys.argv) > 1 else datetime.date.today().isoformat()
+    MAP, MAX_WALLS = fetch_puzzle(level_code)
     GRID = [list(line) for line in MAP.strip().split("\n")]
     ROWS = len(GRID)
     COLS = len(GRID[0])
