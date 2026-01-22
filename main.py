@@ -248,7 +248,14 @@ def render_reachable(grid: list[list[str]], reachable: list[list[bool]]) -> str:
 
 if __name__ == "__main__":
     level_code = sys.argv[1] if len(sys.argv) > 1 else datetime.date.today().isoformat()
+
     MAP, MAX_WALLS = fetch_puzzle(level_code)
+
+    print("Level code:", level_code)
+    print("Max walls:", MAX_WALLS)
+    print(MAP)
+    print()
+
     GRID = [list(line) for line in MAP.strip().split("\n")]
     ROWS = len(GRID)
     COLS = len(GRID[0])
