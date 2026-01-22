@@ -77,23 +77,19 @@ def get_neighbors(pos) -> list[tuple[int, int]]:
 
 
 def solve_enclose_horse() -> list[list[str]] | None:
-    """Optimize wall placement to maximize reachable value under a wall limit.
+    """Optimize wall placement to maximize score under a wall budget.
 
-    Let W[r,c] be wall, R[r,c] be reachable, D[r,c] be distance.
-    For all cells:
-    - R[r,c] <-> D[r,c] >= 0
-    - W[r,c] -> D[r,c] = -1
-    - cell is WATER -> not W[r,c] and not R[r,c] and D[r,c] = -1
-    - cell in {CHERRY, GOLDEN_CHERRY, BEES, PORTAL} -> not W[r,c]
-    - cell is HORSE -> D[r,c] = 0 and not W[r,c]
-    - cell != HORSE -> D[r,c] != 0
-    - boundary LAND and R[r,c] -> W[r,c]
-    - boundary PORTAL -> R[r,c] = 0 and R[portal_exit(r,c)] = 0
-    - for each neighbor n: (not W[r,c] and R[n]) -> R[r,c]
-    - D[r,c] >= 1 -> exists neighbor n with R[n] and D[r,c] = D[n] + 1
-    - no neighbors -> D[r,c] <= 0
-    Objective: maximize sum(R) + 3 * sum(R on CHERRY), with sum(W) <= max_walls.
-    Portals: any digit or lowercase letter neighbors connect to all matching cells.
+    Model:
+    - Walls are blocked cells; unreachable cells have distance = -1.
+    - WATER is always unreachable; walls cannot be placed on WATER, HORSE, CHERRY, GOLDEN_CHERRY, BEES, or PORTAL cells.
+    - HORSE is the only distance 0 cell; other reachable cells have distance >= 1 and must have a reachable neighbor with distance - 1.
+    - Reachability spreads through 4-neighbor adjacency and portal links, unless blocked by walls.
+    - Boundary LAND/CHERRY/GOLDEN_CHERRY/BEES are forced unreachable.
+    - Boundary PORTAL is forced unreachable along with its paired exit.
+
+    Objective: maximize sum(reachable) with bonuses: +3 for CHERRY, +10 for GOLDEN_CHERRY, -5 for BEES,
+    subject to sum(walls) <= MAX_WALLS.
+    Portals are paired by matching digit/lowercase letter; adjacency to a portal includes its exit.
     """
     max_dist = sum(1 for r in range(ROWS) for c in range(COLS) if GRID[r][c] != WATER)
 
@@ -142,12 +138,19 @@ def solve_enclose_horse() -> list[list[str]] | None:
             else:
                 model.add(distance[i][j] != 0)
 
-            if is_boundary and is_(LAND, cell):
-                model.add(wall[i][j] == 1).only_enforce_if(reachable[i][j])
+            # Boundary cells cannot be reachable (rules force enclosure at edges).
+            if is_boundary and (
+                is_(LAND, cell)
+                or is_(CHERRY, cell)
+                or is_(GOLDEN_CHERRY, cell)
+                or is_(BEES, cell)
+            ):
+                model.add(reachable[i][j] == 0)
 
             if is_boundary and is_(PORTAL, cell):
                 en, ej = get_portal_exit((i, j))
 
+                # Boundary portals and their paired exits are also forced unreachable.
                 model.add(reachable[i][j] == 0)
                 model.add(reachable[en][ej] == 0)
 
